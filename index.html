@@ -1,0 +1,24 @@
+<!-- Aqui você pode colar o conteúdo completo atualizado do seu HTML principal, incluindo script e tudo -->
+<!-- Por enquanto está só o placeholder -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lucro Uber Pop</title>
+  <link rel="manifest" href="manifest.json" />
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(reg => console.log('Service Worker registrado:', reg))
+          .catch(err => console.error('Erro ao registrar o Service Worker:', err));
+      });
+    }
+  </script>
+</head>
+<body>
+  <h1>App Lucro Uber</h1>
+  <!-- conteúdo omitido por brevidade -->
+</body>
+</html>
