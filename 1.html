@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Lucro Uber Pop</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; background: #fff; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background: #333; color: #fff; }
+        input, select { width: 80px; padding: 5px; text-align: center; }
+        button { margin-top: 10px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        nav { background: #333; color: #fff; padding: 10px; margin-bottom: 20px; }
+        .parametros-container { display: none; background: #fff; padding: 10px; border: 1px solid #ccc; margin-bottom: 20px; }
+        select { padding: 5px; margin-left: 10px; }
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
+            position: fixed;
+            z-index: 1000;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 17px;
+            opacity: 0;
+            transition: opacity 0.5s, visibility 0.5s;
+        }
+
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .positivo {
+            color: green;
+            font-weight: bold;
+        }
+
+        .negativo {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h2>Lucro Uber Pop</h2>
+
+    <nav>
+        <button onclick="toggleParametros()">Mostrar/Ocultar Parâmetros</button>
+        <label for="historicoSelect">Histórico:</label>
+        <select id="historicoSelect" onchange="carregarHistorico(this.value)">
+            <option value="">Selecione uma data</option>
+        </select>
+        <label for="filtroData">Filtrar por Data:</label>
+        <input type="date" id="filtroData" onchange="filtrarPorData()">
+    </nav>
+
+    <div class="parametros-container" id="parametrosContainer">
+        <table>
+            <thead>
+                <tr>
+                    <th>Parâmetro</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody id="configTable"></tbody>
+        </table>
+    </div>
+
+    <h3>Corridas do Dia</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Corrida</th>
+                <th>Data</th>
+                <th>KM Rodado</th>
+                <th>Valor Pago</th>
+                <th>Lucro</th>
+                <th>Gasolina</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody id="ridesTable"></tbody>
+    </table>
+    <button onclick="adicionarCorrida()">Adicionar Corrida</button>
+    <button onclick="resetarDados()">Resetar Dados</button>
+
+    <h3>Total do Lucro Dia: <span id="totalLucro">0.00</span></h3>
+    <h3>Total Gasto com Gasolina: <span id="totalGasolina">0.00</span></h3>
+
+    <div id="toast">Histórico salvo com sucesso!</div>
+
+    <script>
+        const hoje = new Date().toISOString().split('T')[0];
+        const defaultConfigData = [
+            { key: "Valor Gasolina (L)", value: "" },
+            { key: "Valor Tanque Cheio", value: "" },
+            { key: "Capacidade Tanque (L)", value: "" },
+            { key: "KM Rodados por Tanque", value: "" },
+            { key: "KM Rodado por Litro", value: "" },
+            { key: "Valor por KM Rodado", value: "" },
+            { key: "Estimativa Pago por KM", value: "" },
+            { key: "Aluguel Moto (Semana)", value: "" },
+            { key: "Meta Mínima Dia", value: "" },
+            { key: "Valor Faltante para Meta", value: "" }
+        ];
+
+        let configData = JSON.parse(localStorage.getItem("configData"));
+        if (!Array.isArray(configData) || configData.length !== defaultConfigData.length) {
+            configData = JSON.parse(JSON.stringify(defaultConfigData));
+        }
+
+        let rides = JSON.parse(localStorage.getItem("rides")) || [];
+
+        function showToast(message) {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "show";
+            setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+        function saveData() {
+            localStorage.setItem("configData", JSON.stringify(configData));
+            localStorage.setItem("rides", JSON.stringify(rides));
+        }
+
+        function salvarHistorico() {
+            const dataHoje = new Date().toISOString().split('T')[0];
+            const historico = { configData, rides };
+            localStorage.setItem(`historico-${dataHoje}`, JSON.stringify(historico));
+            showToast("Histórico salvo com sucesso para " + dataHoje);
+        }
+
+        function resetarDados() {
+            salvarHistorico();
+            localStorage.removeItem("configData");
+            localStorage.removeItem("rides");
+            configData = JSON.parse(JSON.stringify(defaultConfigData));
+            rides = [];
+            saveData();
+            createTable();
+            carregarHistoricoSelect();
+        }
+
+        function createTable() {
+            let totalLucro = 0;
+            let totalGasolina = 0;
+
+            const filtroData = document.getElementById("filtroData").value;
+
+            const configTable = document.getElementById("configTable");
+            configTable.innerHTML = "";
+            configData.forEach((item, index) => {
+                let inputHTML = `<input type="number" value="${item.value}" onchange="updateConfig(${index}, this.value)" />`;
+
+                // Destacar o campo de "Valor Faltante para Meta"
+                if (item.key === "Valor Faltante para Meta") {
+                    const valor = parseFloat(item.value);
+                    const classe = valor <= 0 ? "positivo" : "negativo";
+                    inputHTML = `<span class="${classe}">${item.value}</span>`;
+                }
+
+                const row = `<tr>
+                    <td>${item.key}</td>
+                    <td>${inputHTML}</td>
+                </tr>`;
+                configTable.innerHTML += row;
+            });
+
+            const ridesTable = document.getElementById("ridesTable");
+            ridesTable.innerHTML = "";
+            rides.forEach((ride, index) => {
+                if (filtroData && ride.data !== filtroData) return;
+
+                const valorGasolina = parseFloat(configData[5]?.value) || 0;
+                const kmRodado = parseFloat(ride.kmRodado) || 0;
+                const valorPago = parseFloat(ride.valorPago) || 0;
+                const valorGas = kmRodado * valorGasolina;
+                const valorLucro = valorPago - valorGas;
+
+                totalLucro += valorLucro;
+                totalGasolina += valorGas;
+
+                const row = `<tr>
+                    <td>Corrida ${index + 1}</td>
+                    <td><input type="date" value="${ride.data || hoje}" onchange="updateRide(${index}, 'data', this.value)" /></td>
+                    <td><input type="number" value="${ride.kmRodado}" onchange="updateRide(${index}, 'kmRodado', this.value)" /></td>
+                    <td><input type="number" value="${ride.valorPago}" onchange="updateRide(${index}, 'valorPago', this.value)" /></td>
+                    <td>${valorLucro.toFixed(2)}</td>
+                    <td>${valorGas.toFixed(2)}</td>
+                    <td><button onclick="removerCorrida(${index})">Excluir</button></td>
+                </tr>`;
+                ridesTable.innerHTML += row;
+            });
+
+            const metaDia = parseFloat(configData[8]?.value) || 0;
+            const faltanteParaMeta = metaDia - totalLucro;
+            if (configData[9]) configData[9].value = faltanteParaMeta.toFixed(2);
+
+            document.getElementById("totalLucro").textContent = totalLucro.toFixed(2);
+            document.getElementById("totalGasolina").textContent = totalGasolina.toFixed(2);
+
+            saveData();
+        }
+
+        function updateConfig(index, value) {
+            configData[index].value = value;
+            saveData();
+            createTable();
+        }
+
+        function updateRide(index, field, value) {
+            rides[index][field] = value;
+            saveData();
+            createTable();
+        }
+
+        function adicionarCorrida() {
+            rides.push({ kmRodado: "", valorPago: "", data: hoje });
+            saveData();
+            createTable();
+        }
+
+        function removerCorrida(index) {
+            rides.splice(index, 1);
+            saveData();
+            createTable();
+        }
+
+        function toggleParametros() {
+            const container = document.getElementById("parametrosContainer");
+            container.style.display = container.style.display === "none" ? "block" : "none";
+        }
+
+        function carregarHistoricoSelect() {
+            const select = document.getElementById("historicoSelect");
+            select.innerHTML = '<option value="">Selecione uma data</option>';
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith("historico-")) {
+                    const date = key.replace("historico-", "");
+                    const option = document.createElement("option");
+                    option.value = key;
+                    option.textContent = date;
+                    select.appendChild(option);
+                }
+            }
+        }
+
+        function carregarHistorico(key) {
+            if (!key) return;
+            const historico = JSON.parse(localStorage.getItem(key));
+            if (historico && Array.isArray(historico.configData) && Array.isArray(historico.rides)) {
+                configData = historico.configData;
+                rides = historico.rides;
+                saveData();
+                createTable();
+            } else {
+                showToast("Erro ao carregar o histórico. Os dados podem estar corrompidos.");
+            }
+        }
+
+        function agendarResetMeiaNoite() {
+            const agora = new Date();
+            const proximaMeiaNoite = new Date();
+            proximaMeiaNoite.setHours(24, 0, 0, 0);
+            const tempoAteMeiaNoite = proximaMeiaNoite - agora;
+            setTimeout(() => {
+                salvarHistorico();
+                resetarDados();
+            }, tempoAteMeiaNoite);
+        }
+
+        function filtrarPorData() {
+            createTable();
+        }
+
+        window.onload = () => {
+            document.getElementById("parametrosContainer").style.display = "block";
+            createTable();
+            carregarHistoricoSelect();
+            agendarResetMeiaNoite();
+        };
+    </script>
+</body>
+</html>
